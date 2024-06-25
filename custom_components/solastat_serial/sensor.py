@@ -29,7 +29,7 @@ CONF_RTSCTS = "rtscts"
 CONF_DSRDTR = "dsrdtr"
 
 DEFAULT_NAME = "Serial Sensor"
-DEFAULT_BAUDRATE = 9600
+DEFAULT_BAUDRATE = 4800
 DEFAULT_BYTESIZE = serial_asyncio.serial.EIGHTBITS
 DEFAULT_PARITY = serial_asyncio.serial.PARITY_NONE
 DEFAULT_STOPBITS = serial_asyncio.serial.STOPBITS_ONE
@@ -109,6 +109,19 @@ async def async_setup_platform(
 
     hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, sensor.stop_serial_read)
     async_add_entities([sensor], True)
+
+
+async def readline(reader):
+    line = bytearray()
+    while True:
+        c = await reader.read(1)
+        if c:
+            line += c
+            if line[-1] >= 0xf0:
+                break
+        else:
+            break
+    return bytes(line)
 
 
 class SerialSensor(SensorEntity):
@@ -198,7 +211,7 @@ class SerialSensor(SensorEntity):
                 _LOGGER.info("Serial device %s connected", device)
                 while True:
                     try:
-                        line = await reader.readline()
+                        line = await readline(reader)
                     except SerialException:
                         _LOGGER.exception(
                             "Error while reading serial device %s", device
@@ -206,24 +219,29 @@ class SerialSensor(SensorEntity):
                         await self._handle_error()
                         break
                     else:
-                        line = line.decode("utf-8").strip()
+                        if len(line) == 8:
+                            # strip off tags
+                            line = [c & 0x0f for c in line]
+                            data = {
+                                "roof": line[0] + (line[1] << 4) - 50,
+                                "tank": line[2] + (line[3] << 4) - 50,
+                                "inlet": line[4] + (line[5] << 4) - 50,
+                                "solar": line[6],
+                                "backup": line[7]
+                            }
+                            self._attributes = data
 
-                        try:
-                            data = json.loads(line)
-                        except ValueError:
-                            pass
-                        else:
-                            if isinstance(data, dict):
-                                self._attributes = data
+                            line = json.dumps(data)
 
-                        if self._template is not None:
-                            line = self._template.async_render_with_possible_json_value(
-                                line
-                            )
+                            if self._template is not None:
+                                line = self._template.async_render_with_possible_json_value(
+                                    line
+                                )
 
-                        _LOGGER.debug("Received: %s", line)
-                        self._state = line
-                        self.async_write_ha_state()
+                            _LOGGER.debug("Received: %s", line)
+
+                            self._state = line
+                            self.async_write_ha_state()
 
     async def _handle_error(self):
         """Handle error for serial connection."""
