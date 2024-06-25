@@ -1,0 +1,1 @@
+DOMAIN = "solastat_serial"

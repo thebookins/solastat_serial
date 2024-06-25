@@ -1,0 +1,11 @@
+{
+  "codeowners": ["@thebookins"],
+  "config_flow": false,
+  "dependencies": [],
+  "documentation": "https://github.com/thebookins/solastat_serial/",
+  "domain": "solastat_serial",
+  "iot_class": "local_polling",
+  "name": "SolaStat Serial",
+  "requirements": ["pyserial-asyncio-fast==0.11"],
+  "version": "1.0.0"
+}
